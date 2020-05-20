@@ -47,7 +47,7 @@ def match_ip(ip_set, new_ips, re_matrix, gf_matrix, consecutive_frames=DEFAULT_C
         i += 1
 
 
-def extract_keypoints(queue, args, consecutive_frames=DEFAULT_CONSEC_FRAMES):
+def extract_keypoints(queue, args, self_counter , other_counter, consecutive_frames=DEFAULT_CONSEC_FRAMES):
     print('main started')
 
     tagged_df = None
@@ -83,11 +83,16 @@ def extract_keypoints(queue, args, consecutive_frames=DEFAULT_CONSEC_FRAMES):
     frame = 0
     fps = 0
     t0 = time.time()
-    cv2.namedWindow('Detected Pose')
+    cv2.namedWindow(args.video)
 
     while True:
+        print(args.video,self_counter.value,other_counter.value,sep=" ")
+        if(self_counter.value > other_counter.value):
+            continue
+
         ret_val, img = cam.read()
         frame += 1
+        self_counter.value += 1
         if tagged_df is None:
             curr_time = time.time()
         else:
@@ -97,9 +102,10 @@ def extract_keypoints(queue, args, consecutive_frames=DEFAULT_CONSEC_FRAMES):
         if img is None:
             print('no more images captured')
             queue.put(None)
+            print(args.video, time.time() - t0,sep=" ")
             break
 
-        if cv2.waitKey(1) == 27 or cv2.getWindowProperty('Detected Pose', cv2.WND_PROP_VISIBLE) < 1:
+        if cv2.waitKey(1) == 27 or cv2.getWindowProperty(args.video, cv2.WND_PROP_VISIBLE) < 1:
             queue.put(None)
             break
 
@@ -123,7 +129,7 @@ def extract_keypoints(queue, args, consecutive_frames=DEFAULT_CONSEC_FRAMES):
                 img=img, text=f"Avg FPS: {frame//(time.time()-t0)}", color=[0, 0, 0])
         else:
             img = write_on_image(img=img,
-                                 text=f"Avg FPS: {frame//(time.time()-t0)}, Tag: {activity_dict[tagged_df.iloc[frame-1]['Tag']]}",
+                                 text=f"Avg FPS: {frame//(time.time()-t0)}, Tag: {activity_dict[tagged_df.iloc[frame-1]['Tag']]}, Frame: {frame}",
                                  color=[0, 0, 0])
 
         if output_video is None:
@@ -137,9 +143,11 @@ def extract_keypoints(queue, args, consecutive_frames=DEFAULT_CONSEC_FRAMES):
                 logging.debug(f'Not saving the output video')
         else:
             output_video.write(img)
-        cv2.imshow('Detected Pose', img)
+        cv2.imshow(args.video, img)
 
+    cv2.destroyWindow(args.video)
     queue.put(None)
+    return 
 
 
 def alg2(queue, plot_graph, consecutive_frames=DEFAULT_CONSEC_FRAMES, feature_q=None):
@@ -197,11 +205,8 @@ def alg2(queue, plot_graph, consecutive_frames=DEFAULT_CONSEC_FRAMES, feature_q=
                 else:
 
                     pop_and_add(gf_matrix[i], 0, max_length_mat - 1)
-        #
-        # if len(re_matrix) > 0 and re_matrix[0][-1] > 10:
-        #     print(re_matrix[0].index(re_matrix[0][-1]))
-        #     print(ip_set[0][-1])
-        #     print(ip_set[0][-2])
+        if not plot_graph:
+            continue
         if feature_q is None and len(re_matrix) > 0:
             plt.clf()
             x = np.linspace(1, len(re_matrix[0]), len(re_matrix[0]))
@@ -209,13 +214,6 @@ def alg2(queue, plot_graph, consecutive_frames=DEFAULT_CONSEC_FRAMES, feature_q=
             line, = axes.plot(x, re_matrix[0], 'r-')
             plt.draw()
             plt.pause(1e-17)
-        # if feature_q is None and len(gf_matrix) > 0:
-        #     plt.clf()
-        #     x = np.linspace(1, len(gf_matrix[0]), len(gf_matrix[0]))
-        #     axes = plt.gca()
-        #     line, = axes.plot(x, gf_matrix[0], 'r-')
-        #     plt.draw()
-        #     plt.pause(1e-17)
 
     if feature_q is not None:
         feature_q.put(re_matrix)

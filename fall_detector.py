@@ -1,6 +1,7 @@
 import openpifpaf
 import torch
 import argparse
+import copy
 import logging
 import torch.multiprocessing as mp
 import csv
@@ -37,6 +38,8 @@ class FallDetector:
                                   'Example WIDTHxHEIGHT.'))
         parser.add_argument('--video', default=None, type=str,
                             help='Path to the video file.')
+        parser.add_argument('--video_directory',default='dataset/Activity1/Subject1/',
+                            type=str,help='Diretory of video files')
         parser.add_argument('--debug', default=False, action='store_true',
                             help='debug messages and autoreload')
         parser.add_argument('--disable_cuda', default=False, action='store_true',
@@ -73,31 +76,47 @@ class FallDetector:
             args.device = torch.device('cuda')
             args.pin_memory = True
 
-        print(args)
+        if args.checkpoint is None:
+            args.checkpoint = 'resnet18'
+
         return args
 
     def begin(self):
         print('begin: ', __name__)
-        queue = mp.Queue()
+        queue1 = mp.Queue()
+        queue2 = mp.Queue()
+        counter1 = mp.Value('i',0)
+        counter2 = mp.Value('i',0)
         print("Queue Made")
-        process1 = mp.Process(target=extract_keypoints,
-                              args=(queue, self.args, self.consecutive_frames))
-        process1.start()
+        print(self.args)
+        args1=copy.deepcopy(self.args)
+        args3=copy.deepcopy(self.args)
+        args1.video = self.args.video_directory+"Trial1Cam1.mp4"
+        args3.video = self.args.video_directory+"Trial1Cam2.mp4"
+        process1_1 = mp.Process(target=extract_keypoints,
+                              args=(queue1, args1,counter1 , counter2, self.consecutive_frames))
+        process1_2 = mp.Process(target=extract_keypoints,
+                              args=(queue2, args3,counter2, counter1 ,self.consecutive_frames))
+        process1_1.start()
+        process1_2.start()
+        
         print("P1 made")
         if not self.args.coco_points:
-            process2 = mp.Process(target=alg2,
-                                  args=(queue, self.args.plot_graph, self.consecutive_frames))
+            process2_1 = mp.Process(target=alg2,
+                                  args=(queue1, self.args.plot_graph, self.consecutive_frames))
+            process2_2 = mp.Process(target=alg2,
+                                  args=(queue2, self.args.plot_graph, self.consecutive_frames))
             print("P2 made")
-            process2.start()
+            process2_1.start()
+            process2_2.start()
 
-        process1.join()
+        process1_1.join()
+        process1_2.join()
         if not self.args.coco_points:
-            process2.join()
+            process2_1.join()
+            process2_2.join()
 
-        # while not queue.empty():
-        #     queue.get()
-        # queue.close()
-        # queue.join_thread()
+        return
 
     def get_features(self):
         queue = mp.Queue()
@@ -130,3 +149,4 @@ class FallDetector:
 if __name__ == "__main__":
     f = FallDetector()
     f.begin()
+    print("Done")
