@@ -206,7 +206,7 @@ def get_gf(ip0, ip1, ip2):
     ip1 = ip1["keypoints"]
     ip2 = ip2["keypoints"]
 
-    m1 = 1
+    m1 = 0
     m2 = 15
     g = 10
     H2 = ip2['H'] - ip2['N']
