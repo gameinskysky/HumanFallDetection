@@ -4,7 +4,7 @@ from helpers import *
 from default_params import *
 
 
-def match_ip(ip_set, new_ips, num_matched ,consecutive_frames=DEFAULT_CONSEC_FRAMES):
+def match_ip(ip_set, new_ips, lstm_set, num_matched, consecutive_frames=DEFAULT_CONSEC_FRAMES):
     len_ip_set = len(ip_set)
     added = [False for _ in range(len_ip_set)]
 
@@ -23,6 +23,7 @@ def match_ip(ip_set, new_ips, num_matched ,consecutive_frames=DEFAULT_CONSEC_FRA
 
         if cmin[1] == -1:
             ip_set.append([None for _ in range(consecutive_frames - 1)] + [new_ip])
+            lstm_set.append("LSTM")
             new_len_ip_set += 1
 
         else:
@@ -45,8 +46,9 @@ def match_ip(ip_set, new_ips, num_matched ,consecutive_frames=DEFAULT_CONSEC_FRA
             new_len_ip_set -= 1
             removed_indx.append(i)
             
-    for i in sorted(removed_indx,reverse=True):           
+    for i in sorted(removed_indx,reverse=True):
         ip_set.pop(i)
+        lstm_set.pop(i)
 
     return new_matched,new_len_ip_set,removed_match
 

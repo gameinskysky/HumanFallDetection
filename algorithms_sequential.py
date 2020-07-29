@@ -11,6 +11,7 @@ from default_params import *
 from inv_pendulum import *
 import re
 import pandas as pd
+from scipy.signal import savgol_filter,lfilter
 
 
 def show_tracked_img(img_dict,ip_set,num_matched):
@@ -165,15 +166,17 @@ def remove_wrongly_matched(matched_1,matched_2):
 
     return unmatched_idxs
 
-def match_unmatched(unmatched_1,unmatched_2,num_matched):
+def match_unmatched(unmatched_1,unmatched_2,lstm_set1,lstm_set2,num_matched):
 
 
     new_matched_1 = []
     new_matched_2 = []
+    new_lstm1 = []
+    new_lstm2 = []
     final_pairs = [[],[]]
 
     if not unmatched_1 or not unmatched_2:
-        return final_pairs,new_matched_1,new_matched_2
+        return final_pairs,new_matched_1,new_matched_2,new_lstm1,new_lstm2
 
     new_matched = 0
     correlation_matrix = - np.ones((len(unmatched_1),len(unmatched_2)))
@@ -220,12 +223,14 @@ def match_unmatched(unmatched_1,unmatched_2,num_matched):
             final_pairs[1].append(j+num_matched)
             new_matched_1.append(unmatched_1[i])
             new_matched_2.append(unmatched_2[j])
+            new_lstm1.append(lstm_set1[i])
+            new_lstm2.append(lstm_set2[j])
 
 
 
     print("finalpairs",final_pairs,sep="\n")
 
-    return final_pairs,new_matched_1,new_matched_2
+    return final_pairs,new_matched_1,new_matched_2,new_lstm1,new_lstm2
 def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONSEC_FRAMES, feature_q1=None, feature_q2=None):
     t0 = time.time()
     re_matrix1, re_matrix2 = [], []
@@ -233,6 +238,7 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
     feature_plotter1 = [[],[],[],[],[],[]]
     feature_plotter2 = [[],[],[],[],[],[]]
     ip_set1, ip_set2 = [], []
+    lstm_set1, lstm_set2 = [],[]
     max_length_mat = 300
     num_matched = 0
     if not args1.plot_graph:
@@ -256,19 +262,24 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
                 break
             kp_frame1 = dict_frame1["keypoint_sets"]
             kp_frame2 = dict_frame2["keypoint_sets"]
-            num_matched,new_num,indxs_unmatched1 = match_ip(ip_set1, kp_frame1, num_matched , max_length_mat)
+            num_matched,new_num,indxs_unmatched1 = match_ip(ip_set1, kp_frame1, lstm_set1, num_matched, max_length_mat)
             assert(new_num==len(ip_set1))
             for i in sorted(indxs_unmatched1,reverse=True):
                 elem = ip_set2[i]
                 ip_set2.pop(i)
                 ip_set2.append(elem)
-            num_matched,new_num,indxs_unmatched2 = match_ip(ip_set2, kp_frame2, num_matched , max_length_mat)
+                elem_lstm = lstm_set2[i]
+                lstm_set2.pop(i)
+                lstm_set2.append(elem_lstm)
+            num_matched,new_num,indxs_unmatched2 = match_ip(ip_set2, kp_frame2, lstm_set2, num_matched,max_length_mat)
 
             for i in sorted(indxs_unmatched2,reverse=True):
                 elem = ip_set1[i]
                 ip_set1.pop(i)
                 ip_set1.append(elem)
-
+                elem_lstm = lstm_set1[i]
+                lstm_set1.pop(i)
+                lstm_set1.append(elem_lstm)
 
             matched_1 = ip_set1[:num_matched]
             matched_2 = ip_set2[:num_matched]
@@ -284,22 +295,33 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
                 ip_set2.pop(i)
                 ip_set1.append(elem1)
                 ip_set2.append(elem2)
+                elem_lstm1 = lstm_set1[i]
+                lstm_set1.pop(i)
+                lstm_set1.append(elem_lstm1)
+                elem_lstm2 = lstm_set2[i]
+                lstm_set2.pop(i)
+                lstm_set2.append(elem_lstm2)
                 num_matched -= 1
 
             unmatched_1 = ip_set1[num_matched:]
             unmatched_2 = ip_set2[num_matched:]
 
-            new_pairs,new_matched1,new_matched2 = match_unmatched(unmatched_1,unmatched_2,num_matched)
+            new_pairs,new_matched1,new_matched2,new_lstm1,new_lstm2 = match_unmatched(unmatched_1,unmatched_2,lstm_set1,lstm_set2,num_matched)
 
             new_p1 = new_pairs[0]
             new_p2 = new_pairs[1]
+
             for i in sorted(new_p1,reverse=True):
                 ip_set1.pop(i)
+                lstm_set1.pop(i)
             for i in sorted(new_p2,reverse=True):
                 ip_set2.pop(i)
+                lstm_set2.pop(i)
 
             ip_set1 = ip_set1[:num_matched] + new_matched1 + ip_set1[num_matched:]
             ip_set2 = ip_set2[:num_matched] + new_matched2 + ip_set2[num_matched:]
+            lstm_set1 = lstm_set1[:num_matched] + new_lstm1 + lstm_set1[num_matched:]
+            lstm_set2 = lstm_set2[:num_matched] + new_lstm2 + lstm_set2[num_matched:]
             # remember to match the energy matrices also
 
             num_matched = num_matched + len(new_matched1)
@@ -314,6 +336,10 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
 
             valid1_idxs = get_all_features(ip_set1)
             valid2_idxs = get_all_features(ip_set2)
+
+            assert(len(lstm_set1)==len(ip_set1))
+            assert(len(lstm_set2)==len(ip_set2))
+
             DEBUG = False
             for ip_set,feature_plotter in zip([ip_set1,ip_set2],[feature_plotter1,feature_plotter2]):
                 for cnt in range(len(FEATURE_LIST)):
@@ -321,9 +347,6 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
                     if ip_set and ip_set[0] is not None and ip_set[0][-1] is not None and plt_f in ip_set[0][-1]["features"]:
                         #print(ip_set[0][-1]["features"])
                         feature_plotter[cnt].append(ip_set[0][-1]["features"][plt_f])
-                        if DEBUG and plt_f=="gf":
-                            print(ip_set[-1][-1]["features"][plt_f])
-                            pass
 
                     else:
                         #print("None")
@@ -343,18 +366,20 @@ def alg2_sequential(queue1, queue2, args1,args2, consecutive_frames=DEFAULT_CONS
         plt.clf()
         x = np.linspace(1, len(feature_arr), len(feature_arr))
         axes = plt.gca()
-        line, = axes.plot(x, feature_arr, 'r-')
+        filter_array = feature_arr
+        line, = axes.plot(x, filter_array, 'r-')
         plt.ylabel(FEATURE_LIST[i])
-        plt.savefig(f'{args1.video}_{FEATURE_LIST[i]}.png')
+        # #plt.savefig(f'{args1.video}_{FEATURE_LIST[i]}_filter.png')
         plt.pause(1e-7)
 
     for i,feature_arr in enumerate(feature_plotter2):
         plt.clf()
         x = np.linspace(1, len(feature_arr), len(feature_arr))
         axes = plt.gca()
-        line, = axes.plot(x, feature_arr, 'r-')
+        filter_array = feature_arr
+        line, = axes.plot(x, filter_array, 'r-')
         plt.ylabel(FEATURE_LIST[i])
-        plt.savefig(f'{args2.video}_{FEATURE_LIST[i]}.png')
+        # plt.savefig(f'{args2.video}_{FEATURE_LIST[i]}_filter.png')
         plt.pause(1e-7)
             # if len(re_matrix1[0]) > 0:
             #     print(np.linalg.norm(ip_set1[0][-1][0]['B']-ip_set1[0][-1][0]['H']))
