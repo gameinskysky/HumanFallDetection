@@ -190,7 +190,7 @@ def match_unmatched(unmatched_1,unmatched_2,lstm_set1,lstm_set2,num_matched):
 
 
     freelist_1 = [ i for i in range(len(unmatched_1))]
-    pair_21 = [None]*len(unmatched_2)
+    pair_21 = [-1]*len(unmatched_2)
     unmatched_1_preferences = np.argsort(-correlation_matrix,axis=1)
     print("cor",correlation_matrix,sep="\n")
     print("unmatched_1",unmatched_1_preferences,sep="\n")
@@ -202,7 +202,7 @@ def match_unmatched(unmatched_1,unmatched_2,lstm_set1,lstm_set2,num_matched):
             freelist_1.pop()
             continue
         next_unasked_2 = unmatched_1_preferences[um1_idx][unmatched_indexes1[um1_idx]]
-        if pair_21[next_unasked_2] == None:
+        if pair_21[next_unasked_2] == -1:
             pair_21[next_unasked_2] = um1_idx
             freelist_1.pop()
         else:
@@ -218,7 +218,7 @@ def match_unmatched(unmatched_1,unmatched_2,lstm_set1,lstm_set2,num_matched):
             finish_array[um1_idx] = True
 
     for j,i in enumerate(pair_21):
-        if i is not None and correlation_matrix[i][j] > HIST_THRESH:
+        if correlation_matrix[i][j] > HIST_THRESH:
             final_pairs[0].append(i+num_matched)
             final_pairs[1].append(j+num_matched)
             new_matched_1.append(unmatched_1[i])
